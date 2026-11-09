@@ -21,18 +21,36 @@ import OpenAI from "./OpenAI.js";
  *
  * More information at: https://docs.inceptionlabs.ai/
  */
+/**
+ * Mercury Edit 2 and later use a dedicated `fim/completions` endpoint and a
+ * plain prompt/suffix body. The legacy `completions` path (and its penalty and
+ * stop-word workarounds) is only for the older experimental Mercury models.
+ */
+export function usesDedicatedFimEndpoint(model: string | undefined): boolean {
+  return /^mercury-edit-\d/i.test(model ?? "");
+}
+
 class Inception extends OpenAI {
   static providerName = "inception";
   static defaultOptions: Partial<LLMOptions> = {
     apiBase: "https://api.inceptionlabs.ai/v1/",
-    model: "mercury-coder-small",
+    model: "mercury-edit-2",
     completionOptions: {
       temperature: 0.0,
-      presencePenalty: 1.5,
-      stop: ["<|endoftext|>"],
-      model: "mercury-editor-small-experimental", // Added model to fix TypeScript error
+      model: "mercury-edit-2", // required by CompletionOptions
     },
   };
+
+  constructor(options: LLMOptions) {
+    super(options);
+    // The shared OpenAI adapter would send FIM to its own path; mercury-edit
+    // needs `fim/completions`, which `_streamFim` below handles.
+    if (usesDedicatedFimEndpoint(this.model)) {
+      this.useOpenAIAdapterFor = this.useOpenAIAdapterFor.filter(
+        (t) => t !== "streamFim",
+      );
+    }
+  }
 
   supportsFim(): boolean {
     return true;
@@ -64,6 +82,10 @@ class Inception extends OpenAI {
     signal: AbortSignal,
     options: CompletionOptions,
   ): AsyncGenerator<string> {
+    if (usesDedicatedFimEndpoint(options.model)) {
+      yield* this._streamEditFim(prefix, suffix, signal, options);
+      return;
+    }
     const endpoint = new URL("completions", this.apiBase);
     const resp = await this.fetch(endpoint, {
       method: "POST",
@@ -91,6 +113,40 @@ class Inception extends OpenAI {
         continue;
       }
       yield chunk.choices[0].text;
+    }
+  }
+
+  private async *_streamEditFim(
+    prefix: string,
+    suffix: string,
+    signal: AbortSignal,
+    options: CompletionOptions,
+  ): AsyncGenerator<string> {
+    const endpoint = new URL("fim/completions", this.apiBase);
+    const resp = await this.fetch(endpoint, {
+      method: "POST",
+      body: JSON.stringify({
+        model: options.model,
+        prompt: prefix,
+        suffix,
+        max_tokens: options.maxTokens ?? 150,
+        temperature: options.temperature,
+        top_p: options.topP,
+        ...(options.stop?.length ? { stop: options.stop } : {}),
+        stream: true,
+      }),
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      signal,
+    });
+    for await (const chunk of streamSse(resp)) {
+      const text = chunk.choices?.[0]?.text;
+      if (text) {
+        yield text;
+      }
     }
   }
 

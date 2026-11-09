@@ -38,12 +38,17 @@ jobs:
           cd extensions/vscode
           node scripts/prepackage.js
           npm run esbuild
-          npm run package
+          if [[ "$GITHUB_REF_NAME" == *-rc* ]]; then
+            npm run package -- --pre-release
+          else
+            npm run package
+          fi
 
       - name: Attach VSIX to the release
         uses: softprops/action-gh-release@v3
         with:
           files: extensions/vscode/build/*.vsix
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
           generate_release_notes: true
 
       # Marketplace publishing is deliberately manual for now:
