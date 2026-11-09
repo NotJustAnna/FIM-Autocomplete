@@ -577,7 +577,11 @@ export function getTemplateForModel(model: string): AutocompleteTemplate {
   // if (lowerCaseModel.includes("starcoder2")) {
   //   return starcoder2FimTemplate;
   // }
-  if (lowerCaseModel.includes("mercury")) {
+  // mercury-edit-N takes a plain prompt/suffix; no sentinel tokens.
+  if (
+    lowerCaseModel.includes("mercury") &&
+    !/mercury-edit-\d/.test(lowerCaseModel)
+  ) {
     return mercuryMultifileFimTemplate;
   }
 

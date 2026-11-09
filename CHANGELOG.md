@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1 (pre-release)
+
+### Fixed
+
+**Mercury Edit 2 now works with the `inception` provider.** `mercury-edit-2`
+serves autocomplete on `v1/fim/completions`; the provider was sending FIM
+requests to the legacy `completions` path (404), and the shared OpenAI adapter
+was bypassing the provider's own FIM code anyway. `mercury-edit-*` models now
+send a plain `prompt`/`suffix` body, without the old penalty and stop-word
+workarounds or the Mercury sentinel-token template. `mercury-edit-2` is the new
+default model for the provider. Other Mercury models are unchanged.
+
 ## 0.4.0
 
 0.3.1 was about context that never arrived. This release is about what happens
